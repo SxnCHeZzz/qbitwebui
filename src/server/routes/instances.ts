@@ -183,63 +183,69 @@ instances.get('/stats', async (c) => {
 })
 
 instances.post('/', async (c) => {
-	const user = c.get('user')
-	const body = await c.req.json<{
-		label: string
-		url: string
-		qbt_username?: string
-		qbt_password?: string
-		skip_auth?: boolean
-		agent_enabled?: boolean
-		agent_url?: string
-	}>()
-
-	if (!body.label || !body.url) {
-		return c.json({ error: 'Missing required fields' }, 400)
-	}
-
-	if (!body.skip_auth && (!body.qbt_username || !body.qbt_password)) {
-		return c.json({ error: 'Credentials required when skip_auth is disabled' }, 400)
-	}
-
 	try {
-		validateUrl(body.url)
-	} catch (e) {
-		return c.json({ error: e instanceof Error ? e.message : 'Invalid URL' }, 400)
-	}
+		const user = c.get('user')
+		const body = await c.req.json<{
+			label: string
+			url: string
+			qbt_username?: string
+			qbt_password?: string
+			skip_auth?: boolean
+			agent_enabled?: boolean
+			agent_url?: string
+		}>()
 
-	const encrypted = body.qbt_password ? encrypt(body.qbt_password) : null
-
-	try {
-		const result = db.run(
-			`INSERT INTO instances (user_id, label, url, qbt_username, qbt_password_encrypted, skip_auth, agent_enabled, agent_url)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-			[
-				user.id,
-				body.label,
-				body.url,
-				body.qbt_username || null,
-				encrypted,
-				body.skip_auth ? 1 : 0,
-				body.agent_enabled ? 1 : 0,
-				body.agent_url || null,
-			]
-		)
-
-		const instance = db
-			.query<Instance, [number]>('SELECT * FROM instances WHERE id = ?')
-			.get(Number(result.lastInsertRowid))
-
-		if (!instance) {
-			return c.json({ error: 'Failed to create instance' }, 500)
+		if (!body.label || !body.url) {
+			return c.json({ error: 'Missing required fields' }, 400)
 		}
 
-		return c.json(toResponse(instance), 201)
+		if (!body.skip_auth && (!body.qbt_username || !body.qbt_password)) {
+			return c.json({ error: 'Credentials required when skip_auth is disabled' }, 400)
+		}
+
+		try {
+			validateUrl(body.url)
+		} catch (e) {
+			return c.json({ error: e instanceof Error ? e.message : 'Invalid URL' }, 400)
+		}
+
+		const encrypted = body.qbt_password ? encrypt(body.qbt_password) : null
+
+		try {
+			const result = db.run(
+				`INSERT INTO instances (user_id, label, url, qbt_username, qbt_password_encrypted, skip_auth, agent_enabled, agent_url)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+				[
+					user.id,
+					body.label,
+					body.url,
+					body.qbt_username || null,
+					encrypted,
+					body.skip_auth ? 1 : 0,
+					body.agent_enabled ? 1 : 0,
+					body.agent_url || null,
+				]
+			)
+
+			const instance = db
+				.query<Instance, [number]>('SELECT * FROM instances WHERE id = ?')
+				.get(Number(result.lastInsertRowid))
+
+			if (!instance) {
+				return c.json({ error: 'Failed to create instance' }, 500)
+			}
+
+			return c.json(toResponse(instance), 201)
+		} catch (e: unknown) {
+			if (e instanceof Error && e.message.includes('UNIQUE')) {
+				return c.json({ error: 'Instance with this label already exists' }, 400)
+			}
+			throw e
+		}
 	} catch (e: unknown) {
-		if (e instanceof Error && e.message.includes('UNIQUE')) {
-			return c.json({ error: 'Instance with this label already exists' }, 400)
-		}
-		throw e
+		const message = e instanceof Error ? e.message : 'Unknown error'
+		console.error('[Instances] POST error:', message)
+		return c.json({ error: message }, 500)
 	}
 })
 
@@ -417,6 +423,12 @@ instances.delete('/:id', (c) => {
 	db.run('DELETE FROM instances WHERE id = ?', [id])
 	clearQbtSession(id)
 	return c.json({ success: true })
+})
+
+// Global error handler for this router
+instances.onError((err, c) => {
+	console.error('[Instances Router Error]', err)
+	return c.json({ error: 'Internal server error', message: err instanceof Error ? err.message : 'Unknown error' }, 500)
 })
 
 export default instances

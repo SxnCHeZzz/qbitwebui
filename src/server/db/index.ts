@@ -374,4 +374,158 @@ export function clearDefaultCredentials() {
 	defaultCredentials = null
 }
 
+// ============================================================================
+// Automation Rule Engine Tables
+// ============================================================================
+
+db.exec(`
+	CREATE TABLE IF NOT EXISTS automation_rules (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		instance_id INTEGER NOT NULL REFERENCES instances(id) ON DELETE CASCADE,
+		name TEXT NOT NULL,
+		enabled INTEGER DEFAULT 1,
+		trigger_type TEXT NOT NULL,
+		trigger_config TEXT NOT NULL,
+		conditions TEXT NOT NULL,
+		actions TEXT NOT NULL,
+		execution_order INTEGER DEFAULT 0,
+		last_executed INTEGER,
+		execution_count INTEGER DEFAULT 0,
+		created_at INTEGER DEFAULT (unixepoch()),
+		updated_at INTEGER DEFAULT (unixepoch())
+	)
+`)
+
+// Индексы для automation_rules
+db.exec(`CREATE INDEX IF NOT EXISTS idx_auto_rules_user ON automation_rules(user_id)`)
+db.exec(`CREATE INDEX IF NOT EXISTS idx_auto_rules_instance ON automation_rules(instance_id)`)
+db.exec(`CREATE INDEX IF NOT EXISTS idx_auto_rules_enabled ON automation_rules(enabled)`)
+db.exec(`CREATE INDEX IF NOT EXISTS idx_auto_rules_trigger ON automation_rules(trigger_type, enabled)`)
+
+db.exec(`
+	CREATE TABLE IF NOT EXISTS automation_execution_logs (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		rule_id INTEGER NOT NULL REFERENCES automation_rules(id) ON DELETE CASCADE,
+		instance_id INTEGER NOT NULL,
+		torrent_hash TEXT,
+		torrent_name TEXT,
+		triggered_by TEXT NOT NULL,
+		conditions_matched INTEGER NOT NULL,
+		actions_executed TEXT,
+		execution_duration_ms INTEGER,
+		error_message TEXT,
+		created_at INTEGER DEFAULT (unixepoch())
+	)
+`)
+
+// Индексы для логов
+db.exec(`CREATE INDEX IF NOT EXISTS idx_auto_logs_rule ON automation_execution_logs(rule_id)`)
+db.exec(`CREATE INDEX IF NOT EXISTS idx_auto_logs_instance ON automation_execution_logs(instance_id)`)
+db.exec(`CREATE INDEX IF NOT EXISTS idx_auto_logs_created ON automation_execution_logs(created_at)`)
+
+db.exec(`
+	CREATE TABLE IF NOT EXISTS automation_rule_states (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		rule_id INTEGER NOT NULL REFERENCES automation_rules(id) ON DELETE CASCADE,
+		torrent_hash TEXT NOT NULL,
+		state TEXT NOT NULL,
+		created_at INTEGER DEFAULT (unixepoch()),
+		UNIQUE(rule_id, torrent_hash, state)
+	)
+`)
+
+// Индексы для состояний
+db.exec(`CREATE INDEX IF NOT EXISTS idx_auto_states_rule ON automation_rule_states(rule_id)`)
+db.exec(`CREATE INDEX IF NOT EXISTS idx_auto_states_lookup ON automation_rule_states(rule_id, torrent_hash)`)
+db.exec(`CREATE INDEX IF NOT EXISTS idx_auto_states_cleanup ON automation_rule_states(created_at)`)
+
+// ============================================================================
+// Automation Types (for TypeScript)
+// ============================================================================
+
+export type AutomationTriggerType =
+	| 'cron'
+	| 'torrent_added'
+	| 'torrent_completed'
+	| 'state_changed'
+	| 'ratio_reached'
+	| 'manual'
+
+export interface TriggerConfig {
+	cron?: string
+	debounceMs?: number
+	minIntervalSec?: number
+}
+
+export interface Action {
+	type:
+		| 'set_category'
+		| 'add_tag'
+		| 'remove_tag'
+		| 'set_upload_limit'
+		| 'set_download_limit'
+		| 'pause'
+		| 'resume'
+		| 'delete'
+		| 'move'
+		| 'set_priority'
+		| 'webhook'
+		| 'command'
+	category?: string
+	tag?: string
+	limit?: number
+	deleteFiles?: boolean
+	destination?: string
+	priority?: number
+	url?: string
+	method?: 'GET' | 'POST' | 'PUT'
+	headers?: Record<string, string>
+	body?: string
+	cmd?: string
+	args?: string[]
+	timeout?: number
+}
+
+export interface AutomationRule {
+	id: number
+	user_id: number
+	instance_id: number
+	name: string
+	enabled: number
+	trigger_type: AutomationTriggerType
+	trigger_config: string // JSON
+	conditions: string // JSON (json-logic)
+	actions: string // JSON
+	execution_order: number
+	last_executed: number | null
+	execution_count: number
+	created_at: number
+	updated_at: number
+}
+
+export interface ExecutionLogEntry {
+	id: number
+	rule_id: number
+	instance_id: number
+	torrent_hash: string | null
+	torrent_name: string | null
+	triggered_by: string
+	conditions_matched: number
+	actions_executed: string | null // JSON
+	execution_duration_ms: number | null
+	error_message: string | null
+	created_at: number
+}
+
+export interface RuleState {
+	id: number
+	rule_id: number
+	torrent_hash: string
+	state: 'triggered' | 'processed'
+	created_at: number
+}
+
+// ============================================================================
+
 await initDefaultAdmin()

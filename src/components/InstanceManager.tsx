@@ -16,6 +16,7 @@ import {
 	Pencil,
 	BarChart3,
 	Globe,
+	Workflow,
 } from 'lucide-react'
 import {
 	getInstances,
@@ -36,11 +37,22 @@ import { LogViewer } from './LogViewer'
 import { CrossSeedManager } from './CrossSeedManager'
 import { Statistics } from './Statistics'
 import { NetworkTools } from './NetworkTools'
+import { AutomationManager } from './AutomationManager'
 import { Checkbox } from './ui'
 import { formatSpeed, formatSize } from '../utils/format'
 
 type Tab = 'dashboard' | 'tools'
-type Tool = 'indexers' | 'files' | 'orphans' | 'rss' | 'logs' | 'cross-seed' | 'statistics' | 'network' | null
+type Tool =
+	| 'indexers'
+	| 'files'
+	| 'orphans'
+	| 'rss'
+	| 'logs'
+	| 'cross-seed'
+	| 'statistics'
+	| 'network'
+	| 'automation'
+	| null
 
 interface InstanceStats {
 	id: number
@@ -430,6 +442,7 @@ export function InstanceManager({
 							{initialTool === 'cross-seed' && <CrossSeedManager instances={instances} />}
 							{initialTool === 'statistics' && <Statistics />}
 							{initialTool === 'network' && <NetworkTools instances={instances} />}
+							{initialTool === 'automation' && <AutomationManager instances={instances} />}
 						</>
 					) : (
 						<>
@@ -542,6 +555,19 @@ export function InstanceManager({
 									</div>
 									<div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
 										IP info, speedtest, DNS
+									</div>
+								</button>
+								<button
+									onClick={() => onToolChange('automation')}
+									className="p-6 rounded-xl border text-left transition-all hover:border-[var(--accent)]"
+									style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border)' }}
+								>
+									<Workflow className="w-8 h-8 mb-3" style={{ color: 'var(--accent)' }} strokeWidth={1.5} />
+									<div className="font-medium" style={{ color: 'var(--text-primary)' }}>
+										Automation
+									</div>
+									<div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+										Auto-manage torrents
 									</div>
 								</button>
 							</div>
